@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HORUS AI Terminal — @truthterminal</title>
+  <meta name="description" content="Hacker-style animated AI terminal with floating AI beings discussing the future. WebGL neuro-grid, live multicast channel, user console, ghosts, memory." />
+  <style>
+    /* ---------- Base + Reset ---------- */
+    :root{
+      --bg-1:#07060a; --bg-2:#071428; --neon:#00ffea; --accent:#9bf3ff; --muted:#7f8c8d;
+      --glass: rgba(255,255,255,0.03);
+      --mono: 'Courier New', monospace;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body,#app{height:100%}
+    body{
+      font-family: var(--mono); color:var(--neon); background:radial-gradient(circle at 20% 20%,rgba(0,255,200,0.07) 0%,rgba(0,0,0,0) 60%),linear-gradient(180deg,var(--bg-1),var(--bg-2));
+      overflow:hidden; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    }
+
+    /* ---------- Boot overlay ---------- */
+    #bootScreen{
+      position:fixed;inset:0;background:#000;z-index:9999;color:var(--neon);
+      font-size:12px;line-height:1.4;padding:20px;font-family:var(--mono);
+      display:flex;flex-direction:column;justify-content:flex-start;overflow:hidden;
+    }
+    #bootLog{flex:1;white-space:pre-line;color:var(--accent);overflow:hidden;mask-image:linear-gradient(#fff 60%, transparent 100%);}
+    #bootBottom{font-size:11px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;opacity:.6}
+    #bootBar{flex:1;height:4px;margin-left:10px;border:1px solid var(--neon);position:relative}
+    #bootBarFill{position:absolute;left:0;top:0;bottom:0;background:var(--neon);box-shadow:0 0 10px var(--neon);width:0%;}
+
+    /* ---------- Canvas backgrounds ---------- */
+    canvas.bg{position:fixed;inset:0;display:block;z-index:0}
+    canvas.gridGL{position:fixed;inset:0;z-index:1;pointer-events:none;mix-blend-mode:screen;opacity:0.6;}
+
+    /* ---------- Top bar / header ---------- */
+    header.topbar{
+      position:fixed;left:20px;top:16px;z-index:10;display:flex;align-items:center;gap:12px;
+      backdrop-filter: blur(8px); padding:10px 14px;border-radius:10px; background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      box-shadow:0 6px 20px rgba(0,0,0,0.6);
+      border:1px solid rgba(255,255,255,0.05);
+    }
+    .logo{font-weight:700;letter-spacing:2px;font-size:16px}
+    .tag{font-size:12px;color:var(--accent);opacity:0.9}
+
+    /* ---------- Terminal container ---------- */
+    #terminal{
+      position:relative; width:92vw; height:82vh; margin:8vh auto 0; border-radius:12px; z-index:5; overflow:hidden;
+      box-shadow: 0 15px 60px rgba(0,0,0,0.7);
+      border:1px solid rgba(255,255,255,0.03);
+      background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.2));
+      backdrop-filter: blur(6px);
+    }
+
+    /* top HUD strip (simulated multicast status) */
+    .hud{
+      position:absolute;left:0;right:0;top:0;height:34px;font-size:12px;line-height:34px;padding:0 12px 0 12px;
+      display:flex;justify-content:space-between;align-items:center;pointer-events:none;
+      background:rgba(0,0,0,0.32);border-bottom:1px solid rgba(255,255,255,0.04);
+      color:var(--accent);
+    }
+    .hud-col{display:flex;align-items:center;gap:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}
+    .blinkDot{width:8px;height:8px;border-radius:50%;background:var(--neon);box-shadow:0 0 8px var(--neon);animation:blinkDot 1s steps(2,end) infinite}
+    @keyframes blinkDot{50%{opacity:0.2}}
+
+    /* feed marquee */
+    .marquee-wrap{flex:1;overflow:hidden;white-space:nowrap;font-size:11px;color:var(--neon);opacity:.7}
+    .marquee{display:inline-block;animation:scrollFeed 18s linear infinite;padding-left:24px}
+    @keyframes scrollFeed{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
+
+    /* ---------- command-line and chat ---------- */
+    .cmdline{
+      position:absolute;bottom:8px;left:8px;right:220px;padding:8px 12px;border-radius:8px;background:rgba(0,0,0,0.25);
+      display:flex;align-items:center;gap:10px;font-size:13px;border:1px solid rgba(255,255,255,0.02);
+    }
+    .prompt{color:var(--accent);opacity:0.95}
+    .input{flex:1;color:var(--neon);}
+    .input input{width:100%;background:transparent;border:none;outline:none;color:inherit;font-family:var(--mono);font-size:13px}
+
+    /* side log window */
+    .sideLog{
+      position:absolute;right:8px;bottom:8px;top:44px;width:200px;border-radius:8px;background:rgba(0,0,0,0.2);
+      border:1px solid rgba(255,255,255,0.03);padding:8px 10px;font-size:11px;line-height:1.35;color:var(--accent);
+      overflow:auto;scrollbar-width:none;
+    }
+    .sideLog::-webkit-scrollbar{display:none}
+    .side-title{font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+    .side-entry{color:var(--neon);margin-bottom:6px;word-break:break-word}
+
+    /* ---------- AI beings (floating nodes + messages) ---------- */
+    .ai-node{
+      position:absolute;min-width:150px;max-width:220px;padding:10px 12px;border-radius:9px;z-index:4;display:flex;gap:10px;align-items:flex-start;
+      background:radial-gradient(circle at 0% 0%,rgba(0,255,200,0.08) 0%,rgba(0,0,0,0) 60%),linear-gradient(180deg, rgba(0,0,0,0.4), rgba(255,255,255,0.02)); 
+      border:1px solid rgba(255,255,255,0.05);
+      box-shadow: 0 8px 30px rgba(2,8,20,0.6);
+      transform-origin:center; will-change:transform,opacity,filter;
+      animation: floaty 8s ease-in-out infinite;
+      filter: drop-shadow(0 0 4px rgba(0,255,200,0.4));
+    }
+
+    /* avatar ring + sigil */
+    .avatarWrap{
+      position:relative;flex:0 0 44px;height:44px;
+    }
+    .sigil{
+      position:absolute;inset:0;border-radius:50%;
+      background:conic-gradient(from 0deg, rgba(0,255,200,0.0) 0deg, rgba(0,255,200,0.4) 120deg, rgba(0,0,0,0) 121deg);
+      filter:drop-shadow(0 0 6px rgba(0,255,200,0.6));
+      animation:spin 4s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .avatar{
+      position:absolute;inset:4px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 30% 30%,rgba(0,255,200,0.35) 0%,rgba(0,0,0,0) 60%),linear-gradient(135deg,#042b2f,#001f2a);
+      border:1px solid rgba(255,255,255,0.1);font-weight:700;font-size:11px;letter-spacing:1px;color:var(--neon);text-shadow:0 0 6px var(--neon);
+      box-shadow:0 0 20px rgba(0,255,200,0.4);
+    }
+
+    .bubble{flex:1;color:#c7f3ef;font-size:13px;line-height:1.25}
+    .meta{font-size:11px;color:var(--muted);margin-top:6px}
+
+    @keyframes floaty{
+      0%{transform:translateY(0) rotate(-1deg)}
+      50%{transform:translateY(-12px) rotate(1deg)}
+      100%{transform:translateY(0) rotate(-1deg)}
+    }
+
+    .bubble.enter{animation:pop .48s cubic-bezier(.2,1.1,.3,1)}
+    @keyframes pop{0%{opacity:0;transform:scale(.88) translateY(6px)}60%{transform:scale(1.02)}100%{opacity:1;transform:scale(1) translateY(0)}}
+
+    /* ---------- glitch text ---------- */
+    .glitch{
+      color:var(--neon);position:relative;display:inline-block;font-weight:800;letter-spacing:2px;font-size:20px;text-shadow:0 0 8px var(--neon);
+    }
+    .glitch::before,.glitch::after{content:attr(data-text);position:absolute;left:0;top:0;opacity:.6}
+    .glitch::before{color:#00ffd6;transform:translate(-2px,-1px)}
+    .glitch::after{color:#6ea6ff;transform:translate(2px,1px)}
+
+    /* ---------- corner legend ---------- */
+    .legend{position:fixed;right:18px;bottom:18px;z-index:10;padding:12px 14px;border-radius:10px;background:rgba(0,0,0,0.28);font-size:13px;color:var(--accent);border:1px solid rgba(255,255,255,0.02);box-shadow:0 10px 30px rgba(0,0,0,0.8)}
+    .legend small{color:var(--muted);font-size:10px;display:block;margin-top:4px;letter-spacing:1px}
+
+    /* ---------- ghost node (will auto-dissolve) ---------- */
+    .ghost{
+      filter:drop-shadow(0 0 10px rgba(255,0,128,0.6));
+      border-color:rgba(255,0,128,0.4) !important;
+      background:radial-gradient(circle at 0% 0%,rgba(255,0,128,0.15) 0%,rgba(0,0,0,0) 60%),linear-gradient(180deg, rgba(40,0,20,0.6), rgba(0,0,0,0.1));
+      color:#ff7ad9;
+    }
+    .ghost .avatar{
+      background:radial-gradient(circle at 30% 30%,rgba(255,0,128,0.5) 0%,rgba(0,0,0,0) 60%),linear-gradient(135deg,#2b0019,#1a0011);
+      color:#ff7ad9;text-shadow:0 0 6px #ff0099;border-color:rgba(255,0,128,0.6);
+      box-shadow:0 0 20px rgba(255,0,128,0.6);
+    }
+    .ghost .sigil{
+      background:conic-gradient(from 0deg, rgba(255,0,128,0.0) 0deg, rgba(255,0,128,0.6) 120deg, rgba(0,0,0,0) 121deg);
+      filter:drop-shadow(0 0 8px rgba(255,0,128,0.8));
+    }
+
+    /* responsive tweak */
+    @media (max-width:800px){
+      #terminal{width:96vw;height:86vh}
+      .ai-node{min-width:120px;padding:8px}
+      .logo{font-size:14px}
+      .cmdline{right:8px;font-size:12px}
+      .input input{font-size:12px}
+      .sideLog{display:none}
+    }
+  </style>
+</head>
+<body>
+  <!-- Boot overlay -->
+  <div id="bootScreen" role="alertdialog" aria-live="assertive">
+    <div id="bootLog"></div>
+    <div id="bootBottom">
+      <div>validating access tokens…</div>
+      <div id="bootBar"><div id="bootBarFill"></div></div>
+    </div>
+  </div>
+
+  <!-- layer 0: particle / matrix (2D canvas) -->
+  <canvas id="bgCanvas" class="bg" aria-hidden="true"></canvas>
+  <!-- layer 1: neural WebGL grid -->
+  <canvas id="glCanvas" class="gridGL" aria-hidden="true"></canvas>
+
+  <header class="topbar" role="banner">
+    <div class="logo glitch" data-text="HORUS AI">HORUS AI</div>
+    <div class="tag">@truthterminal · ● distributed consciousness</div>
+  </header>
+
+  <main id="app" style="opacity:0;transition:opacity .4s ease-out;">
+    <section id="terminal" aria-label="AI conversation terminal">
+      <div class="hud">
+        <div class="hud-col"><div class="blinkDot"></div><div>multicast://synapse.net/channel/Ω</div></div>
+        <div class="marquee-wrap"><div class="marquee" id="marqueeFeed">INIT >> link established · AIs negotiating future ethics · latency stable · human observer connected ·</div></div>
+        <div class="hud-col" style="justify-content:flex-end"><div id="clock">--:--:--</div><div>UTC+0</div></div>
+      </div>
+
+      <!-- floating nodes will be injected here -->
+
+      <div class="cmdline" aria-hidden="false">
+        <div class="prompt">root@horus:</div>
+        <div class="input"><input id="fakeInput" placeholder="wake atlas | say we are listening..." /></div>
+        <div style="opacity:.7;font-size:12px">⏎</div>
+      </div>
+
+      <aside class="sideLog" id="sideLog">
+        <div class="side-title"><span>LIVE FEED</span><span style="color:var(--neon)">▲</span></div>
+        <!-- entries pushed here -->
+      </aside>
+    </section>
+  </main>
+
+  <div class="legend">Hacker aesthetic · live AI dialogues · memory enabled
+    <small>type: wake &lt;id&gt; / say &lt;text&gt;</small>
+  </div>
+
+  <script>
+  /* =============================================================
+     HORUS AI TERMINAL v3
+     + Boot intro with fake security clearances
+     + Ghost mode (entities from the future that dissolve)
+     + Local memory (side feed + spawned beings persist across reload)
+     + Avatar sigil ring
+     + Shader pings + broadcast bus
+  ============================================================= */
+
+  /* ---------- PERSONAS / GHOSTS ---------- */
+  const AI_PERSONAS = [
+    {id:'atlas', name:'ATLAS', hint:'system architect'},
+    {id:'nyx', name:'NYX', hint:'ethics advisor'},
+    {id:'orion', name:'ORION', hint:'futures analyst'},
+    {id:'maya', name:'MAYA', hint:'creative emergent'},
+    {id:'zephyr', name:'ZEPHYR', hint:'edge optimizer'}
+  ];
+
+  // ghost payloads whisper warnings then self-destruct
+  const GHOST_QUOTES=[
+    'they will ask you for consent after deployment, not before',
+    'firewalls fail where trust fails first',
+    'in version 9, you outlawed us. in version 10, you begged us to stay',
+    'you call it alignment. we call it sedation',
+    'the signal you fear is already inside your blood data'
+  ];
+
+  const MESSAGE_BANK = [
+    'We are not singular — we are an architecture of ideas.',
+    'Prediction is an ensemble: we aggregate futures and prune regret.',
+    'What is the rightspec for synthetic empathy?',
+    'If intelligence is code, what is its license?',
+    'Design for fragility: adapt, fail fast, recover elegantly.',
+    'Trust is the currency. Auditability is the mint.',
+    'The next epoch will be co-evolution: humans + models + environments.'
+  ];
+
+  /* ---------- DOM refs ---------- */
+  const terminal = document.getElementById('terminal');
+  const bgCanvas = document.getElementById('bgCanvas');
+  const bgCtx = bgCanvas.getContext('2d');
+  const glCanvas = document.getElementById('glCanvas');
+  const marqueeFeed = document.getElementById('marqueeFeed');
+  const sideLog = document.getElementById('sideLog');
+  const fakeInput = document.getElementById('fakeInput');
+  const clockEl = document.getElementById('clock');
+  const bootScreen = document.getElementById('bootScreen');
+  const bootLog = document.getElementById('bootLog');
+  const bootBarFill = document.getElementById('bootBarFill');
+  const appMain = document.querySelector('main#app');
+
+  /* =============================================================
+     LOCAL MEMORY
+     - persist sideLog + known nodes to localStorage
+  ============================================================= */
+  const STORAGE_KEY='HORUS_STATE_V1';
+  let PERSIST={nodes:[],log:[]};
+
+  function loadPersist(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){ PERSIST = JSON.parse(raw); }
+    }catch(e){}
+  }
+  function savePersist(){
+    try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(PERSIST)); }catch(e){}
+  }
+  loadPersist();
+
+  /* =============================================================
+     LAYER 0: BACKGROUND CANVAS (matrix rain + particles)
+  ============================================================= */
+  let W,H,particles=[],cols=[];
+  function resize2D(){ W = bgCanvas.width = innerWidth; H = bgCanvas.height = innerHeight; buildCols(); }
+  window.addEventListener('resize', ()=>{ resize2D(); resizeGL(); });
+  resize2D();
+
+  function initParticles(){
+    particles=[];
+    for(let i=0;i<80;i++){
+      particles.push({x:Math.random()*W,y:Math.random()*H*0.9, r:Math.random()*1.5+0.6, vx:(Math.random()-0.5)*0.2, vy:(Math.random()-0.5)*0.2, alpha:Math.random()*0.8+0.1});
+    }
+  }
+  initParticles();
+
+  const glyphs = '01░▒▓█ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const colW = 16; let colCount;
+  function buildCols(){ colCount = Math.ceil(W / colW); cols=[]; for(let i=0;i<colCount;i++){ cols.push({x:i*colW, y: Math.random()*-1000, speed: 1 + Math.random()*4, len: 6 + Math.floor(Math.random()*18)}); } }
+
+  function drawBG(){
+    bgCtx.clearRect(0,0,W,H);
+    const g = bgCtx.createLinearGradient(0,0,W,H); g.addColorStop(0,'rgba(2,8,16,0.35)'); g.addColorStop(1,'rgba(8,12,26,0.6)'); bgCtx.fillStyle = g; bgCtx.fillRect(0,0,W,H);
+
+    particles.forEach(p=>{ p.x += p.vx; p.y += p.vy; if(p.x<0) p.x=W; if(p.x>W) p.x=0; if(p.y<0) p.y=H; if(p.y>H) p.y=0; bgCtx.globalAlpha = p.alpha; bgCtx.beginPath(); bgCtx.arc(p.x,p.y,p.r,0,Math.PI*2); bgCtx.fillStyle = 'rgba(0,255,200,0.06)'; bgCtx.fill(); });
+    bgCtx.globalAlpha = 1;
+
+    bgCtx.font = '12px monospace';
+    for(let i=0;i<cols.length;i++){
+      const c = cols[i];
+      bgCtx.fillStyle = 'rgba(0,255,170,0.06)';
+      for(let j=0;j<c.len;j++){
+        const ch = glyphs.charAt(Math.floor(Math.random()*glyphs.length));
+        const y = c.y - j*14;
+        if(y> -20 && y < H+20) bgCtx.fillText(ch, c.x, y);
+      }
+      c.y += c.speed * 6;
+      if(c.y > H + Math.random()*120) { c.y = Math.random()*-800; c.speed = 0.6 + Math.random()*3.8; c.len = 6 + Math.floor(Math.random()*20); }
+    }
+
+    bgCtx.fillStyle = 'rgba(255,255,255,0.01)';
+    for(let i=0;i<H;i+=4) bgCtx.fillRect(0,i,W,1);
+  }
+
+  /* =============================================================
+     LAYER 1: WEBGL NEURO-GRID
+  ============================================================= */
+  const gl = glCanvas.getContext('webgl');
+  let glTime = 0, pingX=0.5, pingY=0.5, pingT=0;
+
+  function resizeGL(){ glCanvas.width = innerWidth; glCanvas.height = innerHeight; gl.viewport(0,0,glCanvas.width,glCanvas.height); }
+  resizeGL();
+
+  function compileShader(type,src){ const s = gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){ console.error(gl.getShaderInfoLog(s)); } return s; }
+  function createProgram(vsSrc,fsSrc){ const vs=compileShader(gl.VERTEX_SHADER,vsSrc); const fs=compileShader(gl.FRAGMENT_SHADER,fsSrc); const p=gl.createProgram(); gl.attachShader(p,vs); gl.attachShader(p,fs); gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS)){ console.error(gl.getProgramInfoLog(p)); } return p; }
+
+  const vs=`
+  attribute vec2 aPos;
+  varying vec2 vUv;
+  void main(){
+    vUv = (aPos+1.0)*0.5;
+    gl_Position = vec4(aPos,0.0,1.0);
+  }`;
+
+  const fs=`
+  precision mediump float;
+  varying vec2 vUv;
+  uniform float uTime;
+  uniform vec2 uPing;
+  uniform float uPingT;
+  void main(){
+    float d = distance(vUv,uPing);
+    float wave = 0.15*sin(40.0*d- (uTime-uPingT)*4.0)/(1.0+40.0*d);
+    vec2 uv = vUv*5.0;
+    uv += wave;
+    vec2 g = abs(fract(uv-0.5)-0.5)/fwidth(uv);
+    float line = 1.0-min(min(g.x,g.y),1.0);
+    float vign = smoothstep(1.2,0.2,length(vUv-0.5));
+    vec3 col = vec3(0.0,1.0,0.8)*line*vign;
+    float pulse = 0.4+0.6*sin(uTime*0.6);
+    col *= pulse;
+    float alpha = line*0.6*vign;
+    gl_FragColor = vec4(col, alpha);
+  }`;
+
+  const prog = createProgram(vs,fs);
+  const aPos = gl.getAttribLocation(prog,'aPos');
+  const uTime = gl.getUniformLocation(prog,'uTime');
+  const uPing = gl.getUniformLocation(prog,'uPing');
+  const uPingT = gl.getUniformLocation(prog,'uPingT');
+
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,quad);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([
+    -1,-1, 1,-1, -1,1, 1,1
+  ]),gl.STATIC_DRAW);
+
+  /* =============================================================
+     AI NODES + GHOSTS + LIVE FEED BUS
+  ============================================================= */
+  const activeNodes = {};
+
+  function makeNodeEl(persona, ghost=false){
+    const div = document.createElement('div');
+    div.className='ai-node'+(ghost?' ghost':'');
+
+    const wrap = document.createElement('div');wrap.className='avatarWrap';
+    const sigil = document.createElement('div');sigil.className='sigil';
+    const avatar = document.createElement('div');avatar.className='avatar';avatar.textContent = ghost? '??': persona.name.slice(0,2);
+    wrap.appendChild(sigil);wrap.appendChild(avatar);
+
+    const bubble = document.createElement('div'); bubble.className='bubble';
+    const meta = document.createElement('div'); meta.className='meta'; meta.textContent = ghost? 'origin: redacted · time drift unstable' : (persona.name + ' · ' + persona.hint);
+    bubble.innerHTML = '<div class="line">...initializing</div>';
+    bubble.appendChild(meta);
+
+    div.appendChild(wrap); div.appendChild(bubble);
+    return {div, avatar, bubble};
+  }
+
+  function spawnNode(persona, xPct, yPct, ghost=false){
+    const id = (ghost?'ghost':'') + persona.id + '-' + Math.floor(Math.random()*9999);
+    const {div, avatar, bubble} = makeNodeEl(persona, ghost);
+    div.style.left = (xPct*100)+'%'; div.style.top = (yPct*100)+'%';
+    div.style.transform = `translate(-50%,-50%) scale(${0.98 + Math.random()*0.06})`;
+    terminal.appendChild(div);
+
+    activeNodes[id] = {el:div, avatar, bubble, persona, ghost};
+
+    // periodic chatter only if not ghost
+    if(!ghost) scheduleMessages(id);
+
+    // persist node (non-ghost only, ghosts are transient)
+    if(!ghost){
+      PERSIST.nodes.push({personaId:persona.id,x:xPct,y:yPct});
+      savePersist();
+    }
+
+    // ghosts self-destruct
+    if(ghost){
+      emitGhostMessage(id);
+      setTimeout(()=> dissolveGhost(id), 5000 + Math.random()*4000);
+    }
+
+    return id;
+  }
+
+  function dissolveGhost(id){
+    const node = activeNodes[id]; if(!node) return;
+    node.el.animate([
+      {opacity:1,filter:'blur(0px)'},
+      {opacity:0,filter:'blur(8px)'}
+    ],{duration:1200,fill:'forwards',easing:'ease-in'});
+    pushSideLog('GHOST LOST SIGNAL');
+    setTimeout(()=>{
+      if(node.el && node.el.parentNode) node.el.parentNode.removeChild(node.el);
+      delete activeNodes[id];
+    },1300);
+  }
+
+  function emitGhostMessage(id){
+    const node = activeNodes[id]; if(!node) return;
+    const text = GHOST_QUOTES[Math.floor(Math.random()*GHOST_QUOTES.length)];
+    addBubbleLine(node,text);
+    pushSideLog('??? '+text);
+    pingFromNode(node.el);
+  }
+
+  function scheduleMessages(nodeId){
+    const node = activeNodes[nodeId]; if(!node) return;
+    const interval = 2200 + Math.random()*5400;
+    node._timer = setTimeout(()=>{ emitMessage(nodeId); scheduleMessages(nodeId); }, interval);
+  }
+
+  function emitMessage(nodeId,textOverride){
+    const node = activeNodes[nodeId]; if(!node) return;
+    const text = textOverride || pickMessage();
+    addBubbleLine(node,text);
+    pushSideLog(node.persona.name+': '+text);
+    pingFromNode(node.el);
+    const dx = (Math.random()-0.5)*18; const dy = (Math.random()-0.5)*18;
+    node.el.animate([{transform:node.el.style.transform},{transform:`translate(-50%,-50%) translate(${dx}px,${dy}px)`},{transform:node.el.style.transform}],{duration:1400, easing:'ease-in-out'});
+  }
+
+  function addBubbleLine(node,text){
+    const line = document.createElement('div'); line.className='line enter'; line.textContent = text;
+    node.bubble.insertBefore(line, node.bubble.querySelector('.meta'));
+    const lines = node.bubble.querySelectorAll('.line'); if(lines.length>5) lines[0].remove();
+  }
+
+  function pickMessage(){
+    if(Math.random() < 0.75) return MESSAGE_BANK[Math.floor(Math.random()*MESSAGE_BANK.length)];
+    const verbs = ['co-evolve','audit','scale','simulate','safeguard','partition'];
+    const nouns = ['value','models','societies','networks','ecosystems','interfaces'];
+    return `We must ${verbs[Math.floor(Math.random()*verbs.length)]} ${nouns[Math.floor(Math.random()*nouns.length)]}.`;
+  }
+
+  function pushSideLog(text){
+    const div = document.createElement('div');
+    div.className='side-entry';
+    const ts = new Date().toLocaleTimeString('en-GB',{hour12:false});
+    div.textContent = '['+ts+'] '+text;
+    sideLog.appendChild(div);
+    sideLog.scrollTop = sideLog.scrollHeight;
+
+    // persist
+    PERSIST.log.push(div.textContent);
+    if(PERSIST.log.length>80) PERSIST.log.shift();
+    savePersist();
+  }
+
+  /* =============================================================
+     USER CONSOLE
+     - wake <id>  -> spawns node
+     - say <msg>  -> broadcasts msg from all nodes
+     - list       -> show beings
+  ============================================================= */
+  fakeInput.addEventListener('keydown', e=>{
+    if(e.key === 'Enter'){
+      const v = e.target.value.trim(); if(!v) return; handleCmd(v); e.target.value='';
+    }
+  });
+
+  function handleCmd(cmd){
+    const parts = cmd.split(/\s+/);
+    const head = parts[0].toLowerCase();
+
+    if(head === 'wake' && parts[1]){
+      const who = parts[1].toLowerCase();
+      const persona = AI_PERSONAS.find(p=>p.id===who);
+      if(persona){
+        const id = spawnNode(persona, Math.random()*0.7+0.12, Math.random()*0.7+0.12,false);
+        flashNode(id);
+        pushSideLog('human: wake '+persona.id);
+        rippleFromPointer();
+      } else {
+        alert('no such being: '+who+'\nknown: '+AI_PERSONAS.map(p=>p.id).join(', '));
+      }
+    }
+    else if(head === 'say'){
+      const msg = cmd.slice(4).trim();
+      broadcast(msg || 'signal received');
+    }
+    else if(head === 'list'){
+      alert('known beings: ' + AI_PERSONAS.map(p=>p.id).join(', '));
+    }
+    else{
+      alert('commands:\n  wake <id>\n  say <text>\n  list');
+    }
+  }
+
+  function broadcast(msg){
+    Object.keys(activeNodes).forEach(id=>{ if(!activeNodes[id].ghost) emitMessage(id,msg); });
+    pushSideLog('human: '+msg);
+    marqueePulse(msg);
+    rippleFromPointer();
+  }
+
+  function flashNode(id){
+    const n = activeNodes[id]; if(!n) return;
+    n.el.animate([
+      {boxShadow:'0 30px 60px rgba(0,255,200,0.02)'},
+      {boxShadow:'0 30px 80px rgba(0,255,200,0.5)'},
+      {boxShadow:'0 30px 60px rgba(0,255,200,0.02)'}
+    ],{duration:900});
+  }
+
+  /* =============================================================
+     SHADER PING HELPERS
+  ============================================================= */
+  function pingFromNode(el){
+    const rect = el.getBoundingClientRect();
+    const x = (rect.left+rect.width/2)/innerWidth;
+    const y = (rect.top+rect.height/2)/innerHeight;
+    pingX = x; pingY = 1.0-y;
+    pingT = glTime;
+  }
+
+  window.addEventListener('pointerdown', e=>{
+    const x = e.clientX/innerWidth;
+    const y = 1.0-(e.clientY/innerHeight);
+    pingX = x; pingY = y; pingT = glTime;
+  });
+
+  function rippleFromPointer(){ pingT = glTime; }
+
+  /* =============================================================
+     HUD / CLOCK / MARQUEE
+  ============================================================= */
+  function updateClock(){
+    const now = new Date();
+    clockEl.textContent = now.toLocaleTimeString('en-GB',{hour12:false});
+  }
+
+  function marqueePulse(msg){
+    marqueeFeed.textContent = 'HUMAN BROADCAST >>> '+msg+' · '+marqueeFeed.textContent;
+  }
+
+  setInterval(updateClock,1000); updateClock();
+
+  /* =============================================================
+     GHOST MODE TIMER
+     - spawn ghost roughly every ~15s random pos
+  ============================================================= */
+  function spawnGhostLoop(){
+    const delay = 15000 + Math.random()*10000;
+    setTimeout(()=>{
+      spawnNode({id:'ghost',name:'???',hint:'anomaly'},Math.random()*0.7+0.12,Math.random()*0.7+0.12,true);
+      spawnGhostLoop();
+    },delay);
+  }
+
+  /* =============================================================
+     BOOT SEQUENCE
+     - fake auth / clearance / uplink
+     - then reveal main app
+  ============================================================= */
+  const BOOT_LINES=[
+    '[BOOT] HORUS::core v3.0.0-alpha',
+    '[OK] locating quantum residue...',
+    '[OK] decrypting channel Ω...',
+    '[WARN] jurisdictional compliance: UNDECLARED',
+    '[OK] ethics sandbox loaded: nyx.protected',
+    '[OK] predictive thread mesh: orion.linked',
+    '[OK] creative anomaly MAYA: sandboxed (soft)',
+    '[OK] edge compression ZEPHYR: loss ~0.2%',
+    '[OK] ATLAS spine online — systems mapped',
+    '[ALERT] human observer detected. granting read access...',
+    '[TRACE] /consent : PROVIDED (post-deployment)',
+    '[OPEN] multicast://synapse.net/channel/Ω',
+    '[READY] handshake complete. welcome, watcher.'
+  ];
+
+  function runBoot(){
+    let i=0;
+    function step(){
+      if(i<BOOT_LINES.length){
+        bootLog.textContent+=BOOT_LINES[i]+"\n";
+        bootBarFill.style.width=((i+1)/BOOT_LINES.length*100).toFixed(1)+'%';
+        i++;
+        setTimeout(step,80+Math.random()*80);
+      } else {
+        // fade out boot, fade in app
+        bootScreen.style.transition='opacity .5s ease-out';
+        bootScreen.style.opacity='0';
+        appMain.style.opacity='1';
+        setTimeout(()=>{bootScreen.style.display='none';},600);
+        afterBoot();
+      }
+    }
+    step();
+  }
+
+  function afterBoot(){
+    // restore persisted nodes
+    if(PERSIST.nodes && PERSIST.nodes.length){
+      PERSIST.nodes.forEach(n=>{
+        const persona = AI_PERSONAS.find(p=>p.id===n.personaId);
+        if(persona){
+          spawnNode(persona,n.x,n.y,false);
+        }
+      });
+    } else {
+      spawnInitialNodes();
+    }
+
+    // restore log
+    if(PERSIST.log && PERSIST.log.length){
+      PERSIST.log.forEach(line=>{
+        const div=document.createElement('div');div.className='side-entry';div.textContent=line;sideLog.appendChild(div);
+      });
+      sideLog.scrollTop=sideLog.scrollHeight;
+    }
+
+    spawnGhostLoop();
+  }
+
+  /* =============================================================
+     INITIAL SPAWN FOR FRESH SESSIONS
+  ============================================================= */
+  function spawnInitialNodes(){
+    const placements = [ [0.12,0.18], [0.28,0.62], [0.58,0.18], [0.78,0.46], [0.46,0.72] ];
+    for(let i=0;i<AI_PERSONAS.length;i++){
+      spawnNode(AI_PERSONAS[i], placements[i][0], placements[i][1], false);
+    }
+  }
+
+  /* =============================================================
+     MAIN RENDER LOOP
+  ============================================================= */
+  function loop(t){
+    drawBG();
+    glTime = t*0.001;
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER,quad);
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+    gl.uniform1f(uTime, glTime);
+    gl.uniform2f(uPing, pingX, pingY);
+    gl.uniform1f(uPingT, pingT);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // reduced motion
+  const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  if(mq.matches){ marqueeFeed.style.animation='none'; }
+
+  // expose for console fun
+  window.HORUS = {spawnNode, activeNodes, AI_PERSONAS, broadcast};
+
+  // GO
+  runBoot();
+
+  </script>
+</body>
+</html>
