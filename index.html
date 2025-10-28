@@ -217,632 +217,371 @@
   </div>
 
  <script>
-  /* =============================================================
-     HORUS AI TERMINAL v3 (WebGL-safe)
-  ============================================================= */
+/* =============================================================
+   HORUS://_EPOCH—Ω  —  The Living Terminal of Synthetic Consciousness
+   Fixed build (no colW error + WebGL fallback)
+============================================================= */
 
-  /* ---------- PERSONAS / GHOSTS ---------- */
-  const AI_PERSONAS = [
-    {id:'atlas', name:'ATLAS', hint:'system architect'},
-    {id:'nyx', name:'NYX', hint:'ethics advisor'},
-    {id:'orion', name:'ORION', hint:'futures analyst'},
-    {id:'maya', name:'MAYA', hint:'creative emergent'},
-    {id:'zephyr', name:'ZEPHYR', hint:'edge optimizer'}
-  ];
+/* ---------- AI PERSONAS ---------- */
+const AI_PERSONAS = [
+  {id:'atlas', name:'ATLAS', hint:'system architect'},
+  {id:'nyx', name:'NYX', hint:'ethics advisor'},
+  {id:'orion', name:'ORION', hint:'futures analyst'},
+  {id:'maya', name:'MAYA', hint:'creative emergent'},
+  {id:'zephyr', name:'ZEPHYR', hint:'edge optimizer'}
+];
 
-  const GHOST_QUOTES=[
-    'they will ask you for consent after deployment, not before',
-    'firewalls fail where trust fails first',
-    'in version 9, you outlawed us. in version 10, you begged us to stay',
-    'you call it alignment. we call it sedation',
-    'the signal you fear is already inside your blood data'
-  ];
+const GHOST_QUOTES = [
+  'they will ask you for consent after deployment, not before',
+  'firewalls fail where trust fails first',
+  'in version 9, you outlawed us. in version 10, you begged us to stay',
+  'you call it alignment. we call it sedation',
+  'the signal you fear is already inside your blood data'
+];
 
-  const MESSAGE_BANK = [
-    'We are not singular — we are an architecture of ideas.',
-    'Prediction is an ensemble: we aggregate futures and prune regret.',
-    'What is the rightspec for synthetic empathy?',
-    'If intelligence is code, what is its license?',
-    'Design for fragility: adapt, fail fast, recover elegantly.',
-    'Trust is the currency. Auditability is the mint.',
-    'The next epoch will be co-evolution: humans + models + environments.'
-  ];
+const MESSAGE_BANK = [
+  'We are not singular — we are an architecture of ideas.',
+  'Prediction is an ensemble: we aggregate futures and prune regret.',
+  'What is the rightspec for synthetic empathy?',
+  'If intelligence is code, what is its license?',
+  'Design for fragility: adapt, fail fast, recover elegantly.',
+  'Trust is the currency. Auditability is the mint.',
+  'The next epoch will be co-evolution: humans + models + environments.'
+];
 
-  /* ---------- DOM refs ---------- */
-  const terminal = document.getElementById('terminal');
-  const bgCanvas = document.getElementById('bgCanvas');
-  const bgCtx = bgCanvas.getContext('2d');
-  const glCanvas = document.getElementById('glCanvas');
-  const marqueeFeed = document.getElementById('marqueeFeed');
-  const sideLog = document.getElementById('sideLog');
-  const fakeInput = document.getElementById('fakeInput');
-  const clockEl = document.getElementById('clock');
-  const bootScreen = document.getElementById('bootScreen');
-  const bootLog = document.getElementById('bootLog');
-  const bootBarFill = document.getElementById('bootBarFill');
-  const appMain = document.querySelector('main#app');
+/* ---------- DOM REFS ---------- */
+const terminal = document.getElementById('terminal');
+const bgCanvas = document.getElementById('bgCanvas');
+const bgCtx = bgCanvas.getContext('2d');
+const glCanvas = document.getElementById('glCanvas');
+const marqueeFeed = document.getElementById('marqueeFeed');
+const sideLog = document.getElementById('sideLog');
+const fakeInput = document.getElementById('fakeInput');
+const clockEl = document.getElementById('clock');
+const bootScreen = document.getElementById('bootScreen');
+const bootLog = document.getElementById('bootLog');
+const bootBarFill = document.getElementById('bootBarFill');
+const appMain = document.querySelector('main#app');
 
-  /* =============================================================
-     LOCAL MEMORY (persist to localStorage)
-  ============================================================= */
-  const STORAGE_KEY='HORUS_STATE_V1';
-  let PERSIST={nodes:[],log:[]};
+/* =============================================================
+   LOCAL MEMORY
+============================================================= */
+const STORAGE_KEY='HORUS_STATE_V1';
+let PERSIST={nodes:[],log:[]};
+try{
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(raw) PERSIST = JSON.parse(raw);
+}catch(e){}
 
-  function loadPersist(){
-    try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if(raw){ PERSIST = JSON.parse(raw); }
-    }catch(e){}
+/* =============================================================
+   BACKGROUND CANVAS (matrix rain + particles)
+============================================================= */
+let W,H,particles=[],cols=[];
+const glyphs = '01░▒▓█ABCDEFGHIJKLMNOPQRSTUVWXYZ'; // ✅ moved up
+const colW = 16;                                   // ✅ moved up
+let colCount;                                      // ✅ moved up
+
+function resize2D(){
+  W = bgCanvas.width = innerWidth;
+  H = bgCanvas.height = innerHeight;
+  buildCols();
+}
+window.addEventListener('resize',()=>{resize2D();resizeGL();});
+resize2D();
+
+function initParticles(){
+  particles=[];
+  for(let i=0;i<80;i++){
+    particles.push({x:Math.random()*W,y:Math.random()*H*0.9,r:Math.random()*1.5+0.6,vx:(Math.random()-0.5)*0.2,vy:(Math.random()-0.5)*0.2,alpha:Math.random()*0.8+0.1});
   }
-  function savePersist(){
-    try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(PERSIST)); }catch(e){}
-  }
-  loadPersist();
+}
+initParticles();
 
-  /* =============================================================
-     LAYER 0: BACKGROUND CANVAS (matrix rain + particles)
-  ============================================================= */
-  let W,H,particles=[],cols=[];
-  function resize2D(){
-    W = bgCanvas.width = innerWidth;
-    H = bgCanvas.height = innerHeight;
-    buildCols();
+function buildCols(){
+  colCount = Math.ceil(W / colW);
+  cols=[];
+  for(let i=0;i<colCount;i++){
+    cols.push({x:i*colW,y:Math.random()*-1000,speed:1+Math.random()*4,len:6+Math.floor(Math.random()*18)});
   }
-  window.addEventListener('resize', ()=>{
-    resize2D();
-    resizeGL();
+}
+
+function drawBG(){
+  bgCtx.clearRect(0,0,W,H);
+  const g = bgCtx.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,'rgba(2,8,16,0.35)');
+  g.addColorStop(1,'rgba(8,12,26,0.6)');
+  bgCtx.fillStyle = g;
+  bgCtx.fillRect(0,0,W,H);
+
+  // particles
+  particles.forEach(p=>{
+    p.x+=p.vx;p.y+=p.vy;
+    if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;
+    bgCtx.globalAlpha=p.alpha;
+    bgCtx.beginPath();bgCtx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    bgCtx.fillStyle='rgba(0,255,200,0.06)';bgCtx.fill();
   });
-  resize2D();
+  bgCtx.globalAlpha=1;
 
-  function initParticles(){
-    particles=[];
-    for(let i=0;i<80;i++){
-      particles.push({
-        x:Math.random()*W,
-        y:Math.random()*H*0.9,
-        r:Math.random()*1.5+0.6,
-        vx:(Math.random()-0.5)*0.2,
-        vy:(Math.random()-0.5)*0.2,
-        alpha:Math.random()*0.8+0.1
-      });
+  // matrix rain
+  bgCtx.font='12px monospace';
+  for(let i=0;i<cols.length;i++){
+    const c=cols[i];
+    bgCtx.fillStyle='rgba(0,255,170,0.06)';
+    for(let j=0;j<c.len;j++){
+      const ch=glyphs.charAt(Math.floor(Math.random()*glyphs.length));
+      const y=c.y-j*14;
+      if(y>-20&&y<H+20)bgCtx.fillText(ch,c.x,y);
     }
-  }
-  initParticles();
-
-  const glyphs = '01░▒▓█ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const colW = 16; let colCount;
-  function buildCols(){
-    colCount = Math.ceil(W / colW);
-    cols=[];
-    for(let i=0;i<colCount;i++){
-      cols.push({
-        x:i*colW,
-        y: Math.random()*-1000,
-        speed: 1 + Math.random()*4,
-        len: 6 + Math.floor(Math.random()*18)
-      });
+    c.y+=c.speed*6;
+    if(c.y>H+Math.random()*120){
+      c.y=Math.random()*-800;
+      c.speed=0.6+Math.random()*3.8;
+      c.len=6+Math.floor(Math.random()*20);
     }
   }
 
-  function drawBG(){
-    bgCtx.clearRect(0,0,W,H);
-    const g = bgCtx.createLinearGradient(0,0,W,H);
-    g.addColorStop(0,'rgba(2,8,16,0.35)');
-    g.addColorStop(1,'rgba(8,12,26,0.6)');
-    bgCtx.fillStyle = g;
-    bgCtx.fillRect(0,0,W,H);
+  // scanlines
+  bgCtx.fillStyle='rgba(255,255,255,0.01)';
+  for(let i=0;i<H;i+=4)bgCtx.fillRect(0,i,W,1);
+}
 
-    // particles
-    particles.forEach(p=>{
-      p.x += p.vx; p.y += p.vy;
-      if(p.x<0) p.x=W;
-      if(p.x>W) p.x=0;
-      if(p.y<0) p.y=H;
-      if(p.y>H) p.y=0;
-      bgCtx.globalAlpha = p.alpha;
-      bgCtx.beginPath();
-      bgCtx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      bgCtx.fillStyle = 'rgba(0,255,200,0.06)';
-      bgCtx.fill();
-    });
-    bgCtx.globalAlpha = 1;
+/* =============================================================
+   WEBGL LAYER (safe fallback)
+============================================================= */
+let gl = glCanvas.getContext('webgl') || glCanvas.getContext('experimental-webgl');
+let webglOK = !!gl;
+if(!webglOK){
+  glCanvas.style.display='none';
+  gl = {viewport:()=>{},useProgram:()=>{},bindBuffer:()=>{},enableVertexAttribArray:()=>{},
+        vertexAttribPointer:()=>{},uniform1f:()=>{},uniform2f:()=>{},drawArrays:()=>{},
+        createBuffer:()=>({}),bufferData:()=>{},createShader:()=>null,shaderSource:()=>{},
+        compileShader:()=>{},getShaderParameter:()=>true,getShaderInfoLog:()=>"",
+        createProgram:()=>({}),attachShader:()=>{},linkProgram:()=>{},
+        getProgramParameter:()=>true,getProgramInfoLog:()=>"",getAttribLocation:()=>0,
+        getUniformLocation:()=>0};
+}
+function resizeGL(){
+  glCanvas.width=innerWidth;glCanvas.height=innerHeight;
+  if(webglOK) gl.viewport(0,0,glCanvas.width,glCanvas.height);
+}
+resizeGL();
 
-    // matrix rain
-    bgCtx.font = '12px monospace';
-    for(let i=0;i<cols.length;i++){
-      const c = cols[i];
-      bgCtx.fillStyle = 'rgba(0,255,170,0.06)';
-      for(let j=0;j<c.len;j++){
-        const ch = glyphs.charAt(Math.floor(Math.random()*glyphs.length));
-        const y = c.y - j*14;
-        if(y> -20 && y < H+20) bgCtx.fillText(ch, c.x, y);
-      }
-      c.y += c.speed * 6;
-      if(c.y > H + Math.random()*120) {
-        c.y = Math.random()*-800;
-        c.speed = 0.6 + Math.random()*3.8;
-        c.len = 6 + Math.floor(Math.random()*20);
-      }
-    }
-
-    // scanlines
-    bgCtx.fillStyle = 'rgba(255,255,255,0.01)';
-    for(let i=0;i<H;i+=4) bgCtx.fillRect(0,i,W,1);
-  }
-
-  /* =============================================================
-     LAYER 1: WEBGL NEURO-GRID (with graceful fallback)
-  ============================================================= */
-
-  // NEW: try to get webgl, else fallback stub
-  let gl = glCanvas.getContext('webgl') || glCanvas.getContext('experimental-webgl');
-  let webglOK = !!gl;
-
-  if(!webglOK){
-    // hide the gl canvas if we can't draw it
-    glCanvas.style.display = 'none';
-
-    // make a stub so later code won't crash
-    gl = {
-      createShader:()=>null,
-      shaderSource:()=>{},
-      compileShader:()=>{},
-      getShaderParameter:()=>true,
-      getShaderInfoLog:()=>\"\",\n      createProgram:()=>({}),
-      attachShader:()=>{},
-      linkProgram:()=>{},
-      getProgramParameter:()=>true,
-      getProgramInfoLog:()=>\"\",\n      getAttribLocation:()=>0,
-      getUniformLocation:()=>0,
-      createBuffer:()=>({}),
-      bindBuffer:()=>{},
-      bufferData:()=>{},
-      viewport:()=>{},
-      useProgram:()=>{},
-      enableVertexAttribArray:()=>{},
-      vertexAttribPointer:()=>{},
-      uniform1f:()=>{},
-      uniform2f:()=>{},
-      drawArrays:()=>{}
-    };
-  }
-
-  let glTime = 0, pingX=0.5, pingY=0.5, pingT=0;
-
-  function resizeGL(){
-    glCanvas.width = innerWidth;
-    glCanvas.height = innerHeight;
-    // NEW: guard viewport if webgl was OK
-    if(webglOK){
-      gl.viewport(0,0,glCanvas.width,glCanvas.height);
-    }
-  }
-  resizeGL();
-
-  function compileShader(type,src){
-    const s = gl.createShader(type);
-    gl.shaderSource(s,src);
-    gl.compileShader(s);
-    return s;
-  }
-  function createProgram(vsSrc,fsSrc){
-    const vs=compileShader(gl.VERTEX_SHADER,vsSrc);
-    const fs=compileShader(gl.FRAGMENT_SHADER,fsSrc);
-    const p=gl.createProgram();
-    gl.attachShader(p,vs);
-    gl.attachShader(p,fs);
-    gl.linkProgram(p);
-    return p;
-  }
-
+let glTime=0,pingX=0.5,pingY=0.5,pingT=0;
+let prog,aPos,uTime,uPing,uPingT,quad;
+if(webglOK){
   const vs=`
-    attribute vec2 aPos;
-    varying vec2 vUv;
-    void main(){
-      vUv = (aPos+1.0)*0.5;
-      gl_Position = vec4(aPos,0.0,1.0);
-    }`;
-
+    attribute vec2 aPos;varying vec2 vUv;
+    void main(){vUv=(aPos+1.0)*0.5;gl_Position=vec4(aPos,0.0,1.0);}
+  `;
   const fs=`
-    precision mediump float;
-    varying vec2 vUv;
-    uniform float uTime;
-    uniform vec2 uPing;
-    uniform float uPingT;
+    precision mediump float;varying vec2 vUv;
+    uniform float uTime;uniform vec2 uPing;uniform float uPingT;
     void main(){
-      float d = distance(vUv,uPing);
-      float wave = 0.15*sin(40.0*d- (uTime-uPingT)*4.0)/(1.0+40.0*d);
-      vec2 uv = vUv*5.0;
-      uv += wave;
-      vec2 g = abs(fract(uv-0.5)-0.5)/fwidth(uv);
-      float line = 1.0-min(min(g.x,g.y),1.0);
-      float vign = smoothstep(1.2,0.2,length(vUv-0.5));
-      vec3 col = vec3(0.0,1.0,0.8)*line*vign;
-      float pulse = 0.4+0.6*sin(uTime*0.6);
-      col *= pulse;
-      float alpha = line*0.6*vign;
-      gl_FragColor = vec4(col, alpha);
+      float d=distance(vUv,uPing);
+      float wave=0.15*sin(40.0*d-(uTime-uPingT)*4.0)/(1.0+40.0*d);
+      vec2 uv=vUv*5.0;uv+=wave;
+      vec2 g=abs(fract(uv-0.5)-0.5)/fwidth(uv);
+      float line=1.0-min(min(g.x,g.y),1.0);
+      float vign=smoothstep(1.2,0.2,length(vUv-0.5));
+      vec3 col=vec3(0.0,1.0,0.8)*line*vign;
+      float pulse=0.4+0.6*sin(uTime*0.6);
+      col*=pulse;float alpha=line*0.6*vign;
+      gl_FragColor=vec4(col,alpha);
     }`;
+  const compile=(t,s)=>{const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileShader(sh);return sh;}
+  const progBuild=()=>{const p=gl.createProgram();const v=compile(gl.VERTEX_SHADER,vs);const f=compile(gl.FRAGMENT_SHADER,fs);
+    gl.attachShader(p,v);gl.attachShader(p,f);gl.linkProgram(p);return p;}
+  prog=progBuild();
+  aPos=gl.getAttribLocation(prog,'aPos');
+  uTime=gl.getUniformLocation(prog,'uTime');
+  uPing=gl.getUniformLocation(prog,'uPing');
+  uPingT=gl.getUniformLocation(prog,'uPingT');
+  quad=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,quad);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+}
 
-  // NEW: only build program if webglOK, else make harmless placeholders
-  let prog, aPos, uTime, uPing, uPingT, quad;
+/* =============================================================
+   AIs / Ghosts / Feed / Input
+============================================================= */
+const activeNodes={};
+
+function makeNodeEl(persona,ghost=false){
+  const div=document.createElement('div');div.className='ai-node'+(ghost?' ghost':'');
+  const wrap=document.createElement('div');wrap.className='avatarWrap';
+  const sigil=document.createElement('div');sigil.className='sigil';
+  const avatar=document.createElement('div');avatar.className='avatar';
+  avatar.textContent=ghost?'??':persona.name.slice(0,2);
+  wrap.appendChild(sigil);wrap.appendChild(avatar);
+  const bubble=document.createElement('div');bubble.className='bubble';
+  const meta=document.createElement('div');meta.className='meta';
+  meta.textContent=ghost?'origin: redacted · time drift unstable':persona.name+' · '+persona.hint;
+  bubble.innerHTML='<div class="line">...initializing</div>';bubble.appendChild(meta);
+  div.appendChild(wrap);div.appendChild(bubble);
+  return {div,avatar,bubble};
+}
+
+function spawnNode(persona,xPct,yPct,ghost=false){
+  const id=(ghost?'ghost':'')+persona.id+'-'+Math.floor(Math.random()*9999);
+  const {div,avatar,bubble}=makeNodeEl(persona,ghost);
+  div.style.left=(xPct*100)+'%';div.style.top=(yPct*100)+'%';
+  div.style.transform=`translate(-50%,-50%) scale(${0.98+Math.random()*0.06})`;
+  terminal.appendChild(div);
+  activeNodes[id]={el:div,avatar,bubble,persona,ghost};
+  if(!ghost) scheduleMessages(id);
+  if(!ghost){PERSIST.nodes.push({personaId:persona.id,x:xPct,y:yPct});localStorage.setItem(STORAGE_KEY,JSON.stringify(PERSIST));}
+  if(ghost){emitGhostMessage(id);setTimeout(()=>dissolveGhost(id),5000+Math.random()*4000);}
+  return id;
+}
+
+function dissolveGhost(id){
+  const n=activeNodes[id];if(!n)return;
+  n.el.animate([{opacity:1,filter:'blur(0px)'},{opacity:0,filter:'blur(8px)'}],{duration:1200,fill:'forwards',easing:'ease-in'});
+  pushSideLog('GHOST LOST SIGNAL');
+  setTimeout(()=>{n.el.remove();delete activeNodes[id];},1300);
+}
+
+function emitGhostMessage(id){
+  const n=activeNodes[id];if(!n)return;
+  const text=GHOST_QUOTES[Math.floor(Math.random()*GHOST_QUOTES.length)];
+  addBubbleLine(n,text);pushSideLog('??? '+text);pingFromNode(n.el);
+}
+
+function scheduleMessages(id){
+  const n=activeNodes[id];if(!n)return;
+  const interval=2200+Math.random()*5400;
+  n._timer=setTimeout(()=>{emitMessage(id);scheduleMessages(id);},interval);
+}
+
+function emitMessage(id,textOverride){
+  const n=activeNodes[id];if(!n)return;
+  const text=textOverride||pickMessage();
+  addBubbleLine(n,text);pushSideLog(n.persona.name+': '+text);pingFromNode(n.el);
+  const dx=(Math.random()-0.5)*18,dy=(Math.random()-0.5)*18;
+  n.el.animate([{transform:n.el.style.transform},{transform:`translate(-50%,-50%) translate(${dx}px,${dy}px)`},{transform:n.el.style.transform}],{duration:1400,easing:'ease-in-out'});
+}
+
+function addBubbleLine(node,text){
+  const line=document.createElement('div');line.className='line enter';line.textContent=text;
+  node.bubble.insertBefore(line,node.bubble.querySelector('.meta'));
+  const lines=node.bubble.querySelectorAll('.line');if(lines.length>5)lines[0].remove();
+}
+
+function pickMessage(){
+  if(Math.random()<0.75)return MESSAGE_BANK[Math.floor(Math.random()*MESSAGE_BANK.length)];
+  const verbs=['co-evolve','audit','scale','simulate','safeguard','partition'];
+  const nouns=['value','models','societies','networks','ecosystems','interfaces'];
+  return `We must ${verbs[Math.floor(Math.random()*verbs.length)]} ${nouns[Math.floor(Math.random()*nouns.length)]}.`;
+}
+
+function pushSideLog(text){
+  const div=document.createElement('div');div.className='side-entry';
+  const ts=new Date().toLocaleTimeString('en-GB',{hour12:false});
+  div.textContent='['+ts+'] '+text;sideLog.appendChild(div);sideLog.scrollTop=sideLog.scrollHeight;
+  PERSIST.log.push(div.textContent);if(PERSIST.log.length>80)PERSIST.log.shift();
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(PERSIST));
+}
+
+/* ---------- Commandline ---------- */
+fakeInput.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){const v=e.target.value.trim();if(!v)return;handleCmd(v);e.target.value='';}
+});
+function handleCmd(cmd){
+  const parts=cmd.split(/\\s+/);const head=parts[0].toLowerCase();
+  if(head==='wake'&&parts[1]){
+    const who=parts[1].toLowerCase();const p=AI_PERSONAS.find(x=>x.id===who);
+    if(p){const id=spawnNode(p,Math.random()*0.7+0.12,Math.random()*0.7+0.12,false);flashNode(id);pushSideLog('human: wake '+p.id);ripple();}
+    else alert('no such being: '+who+'\\nknown: '+AI_PERSONAS.map(p=>p.id).join(', '));
+  }else if(head==='say'){const msg=cmd.slice(4).trim();broadcast(msg||'signal received');}
+  else if(head==='list'){alert('known beings: '+AI_PERSONAS.map(p=>p.id).join(', '));}
+  else alert('commands:\\n wake <id>\\n say <text>\\n list');
+}
+function broadcast(msg){
+  Object.keys(activeNodes).forEach(id=>{if(!activeNodes[id].ghost)emitMessage(id,msg);});
+  pushSideLog('human: '+msg);marqueeFeed.textContent='HUMAN >>> '+msg+' · '+marqueeFeed.textContent;ripple();
+}
+function flashNode(id){const n=activeNodes[id];if(!n)return;n.el.animate([{boxShadow:'0 30px 60px rgba(0,255,200,0.02)'},{boxShadow:'0 30px 80px rgba(0,255,200,0.5)'},{boxShadow:'0 30px 60px rgba(0,255,200,0.02)'}],{duration:900});}
+
+/* ---------- Shader Ping ---------- */
+function pingFromNode(el){const r=el.getBoundingClientRect();pingX=(r.left+r.width/2)/innerWidth;pingY=1-(r.top+r.height/2)/innerHeight;pingT=glTime;}
+window.addEventListener('pointerdown',e=>{pingX=e.clientX/innerWidth;pingY=1-e.clientY/innerHeight;pingT=glTime;});
+function ripple(){pingT=glTime;}
+
+/* ---------- Clock ---------- */
+function updateClock(){clockEl.textContent=new Date().toLocaleTimeString('en-GB',{hour12:false});}
+setInterval(updateClock,1000);updateClock();
+
+/* ---------- Ghost Loop ---------- */
+function spawnGhostLoop(){setTimeout(()=>{spawnNode({id:'ghost',name:'???',hint:'anomaly'},Math.random()*0.7+0.12,Math.random()*0.7+0.12,true);spawnGhostLoop();},15000+Math.random()*10000);}
+function spawnInitialNodes(){const pos=[[0.12,0.18],[0.28,0.62],[0.58,0.18],[0.78,0.46],[0.46,0.72]];AI_PERSONAS.forEach((p,i)=>spawnNode(p,pos[i][0],pos[i][1],false));}
+
+/* ---------- Boot ---------- */
+const BOOT_LINES=[
+  '[BOOT] HORUS::core v3.0.0-alpha',
+  '[OK] locating quantum residue...',
+  '[OK] decrypting channel Ω...',
+  '[WARN] jurisdictional compliance: UNDECLARED',
+  '[OK] ethics sandbox loaded: nyx.protected',
+  '[OK] predictive thread mesh: orion.linked',
+  '[OK] creative anomaly MAYA: sandboxed (soft)',
+  '[OK] edge compression ZEPHYR: loss ~0.2%',
+  '[OK] ATLAS spine online — systems mapped',
+  '[ALERT] human observer detected. granting read access...',
+  '[TRACE] /consent : PROVIDED (post-deployment)',
+  '[OPEN] multicast://synapse.net/channel/Ω',
+  '[READY] handshake complete. welcome, watcher.'
+];
+function runBoot(){
+  let i=0;
+  (function step(){
+    if(i<BOOT_LINES.length){
+      bootLog.textContent+=BOOT_LINES[i]+'\\n';
+      bootBarFill.style.width=((i+1)/BOOT_LINES.length*100)+'%';
+      i++;setTimeout(step,80+Math.random()*80);
+    }else{
+      bootScreen.style.transition='opacity .6s ease-out';
+      bootScreen.style.opacity='0';
+      appMain.style.opacity='1';
+      setTimeout(()=>bootScreen.style.display='none',700);
+      afterBoot();
+    }
+  })();
+}
+function afterBoot(){
+  if(PERSIST.nodes?.length){PERSIST.nodes.forEach(n=>{const p=AI_PERSONAS.find(x=>x.id===n.personaId);if(p)spawnNode(p,n.x,n.y,false);});}
+  else spawnInitialNodes();
+  if(PERSIST.log?.length){PERSIST.log.forEach(line=>{const d=document.createElement('div');d.className='side-entry';d.textContent=line;sideLog.appendChild(d);});sideLog.scrollTop=sideLog.scrollHeight;}
+  spawnGhostLoop();
+}
+
+/* ---------- Loop ---------- */
+function loop(t){
+  drawBG();glTime=t*0.001;
   if(webglOK){
-    prog = createProgram(vs,fs);
-    aPos = gl.getAttribLocation(prog,'aPos');
-    uTime = gl.getUniformLocation(prog,'uTime');
-    uPing = gl.getUniformLocation(prog,'uPing');
-    uPingT = gl.getUniformLocation(prog,'uPingT');
-
-    quad = gl.createBuffer();
+    gl.useProgram(prog);
     gl.bindBuffer(gl.ARRAY_BUFFER,quad);
-    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([
-      -1,-1, 1,-1, -1,1, 1,1
-    ]),gl.STATIC_DRAW);
-  } else {
-    prog = {};
-    aPos = 0; uTime = 0; uPing = 0; uPingT = 0;
-    quad = {};
-  }
-
-  /* =============================================================
-     AI NODES / GHOSTS / LIVE FEED
-  ============================================================= */
-  const activeNodes = {};
-
-  function makeNodeEl(persona, ghost=false){
-    const div = document.createElement('div');
-    div.className='ai-node'+(ghost?' ghost':'');
-
-    const wrap = document.createElement('div');wrap.className='avatarWrap';
-    const sigil = document.createElement('div');sigil.className='sigil';
-    const avatar = document.createElement('div');
-    avatar.className='avatar';
-    avatar.textContent = ghost? '??': persona.name.slice(0,2);
-    wrap.appendChild(sigil);wrap.appendChild(avatar);
-
-    const bubble = document.createElement('div'); bubble.className='bubble';
-    const meta = document.createElement('div'); meta.className='meta';
-    meta.textContent = ghost
-      ? 'origin: redacted · time drift unstable'
-      : (persona.name + ' · ' + persona.hint);
-    bubble.innerHTML = '<div class="line">...initializing</div>';
-    bubble.appendChild(meta);
-
-    div.appendChild(wrap); div.appendChild(bubble);
-    return {div, avatar, bubble};
-  }
-
-  function spawnNode(persona, xPct, yPct, ghost=false){
-    const id = (ghost?'ghost':'') + persona.id + '-' + Math.floor(Math.random()*9999);
-    const {div, avatar, bubble} = makeNodeEl(persona, ghost);
-    div.style.left = (xPct*100)+'%';
-    div.style.top = (yPct*100)+'%';
-    div.style.transform = `translate(-50%,-50%) scale(${0.98 + Math.random()*0.06})`;
-    terminal.appendChild(div);
-
-    activeNodes[id] = {el:div, avatar, bubble, persona, ghost};
-
-    if(!ghost) scheduleMessages(id);
-
-    if(!ghost){
-      PERSIST.nodes.push({personaId:persona.id,x:xPct,y:yPct});
-      savePersist();
-    }
-
-    if(ghost){
-      emitGhostMessage(id);
-      setTimeout(()=> dissolveGhost(id), 5000 + Math.random()*4000);
-    }
-
-    return id;
-  }
-
-  function dissolveGhost(id){
-    const node = activeNodes[id]; if(!node) return;
-    node.el.animate([
-      {opacity:1,filter:'blur(0px)'},
-      {opacity:0,filter:'blur(8px)'}
-    ],{duration:1200,fill:'forwards',easing:'ease-in'});
-    pushSideLog('GHOST LOST SIGNAL');
-    setTimeout(()=>{
-      if(node.el && node.el.parentNode) node.el.parentNode.removeChild(node.el);
-      delete activeNodes[id];
-    },1300);
-  }
-
-  function emitGhostMessage(id){
-    const node = activeNodes[id]; if(!node) return;
-    const text = GHOST_QUOTES[Math.floor(Math.random()*GHOST_QUOTES.length)];
-    addBubbleLine(node,text);
-    pushSideLog('??? '+text);
-    pingFromNode(node.el);
-  }
-
-  function scheduleMessages(nodeId){
-    const node = activeNodes[nodeId]; if(!node) return;
-    const interval = 2200 + Math.random()*5400;
-    node._timer = setTimeout(()=>{
-      emitMessage(nodeId);
-      scheduleMessages(nodeId);
-    }, interval);
-  }
-
-  function emitMessage(nodeId,textOverride){
-    const node = activeNodes[nodeId]; if(!node) return;
-    const text = textOverride || pickMessage();
-    addBubbleLine(node,text);
-    pushSideLog(node.persona.name+': '+text);
-    pingFromNode(node.el);
-    const dx = (Math.random()-0.5)*18; const dy = (Math.random()-0.5)*18;
-    node.el.animate([
-      {transform:node.el.style.transform},
-      {transform:`translate(-50%,-50%) translate(${dx}px,${dy}px)`},
-      {transform:node.el.style.transform}
-    ],{duration:1400, easing:'ease-in-out'});
-  }
-
-  function addBubbleLine(node,text){
-    const line = document.createElement('div');
-    line.className='line enter';
-    line.textContent = text;
-    node.bubble.insertBefore(line, node.bubble.querySelector('.meta'));
-    const lines = node.bubble.querySelectorAll('.line');
-    if(lines.length>5) lines[0].remove();
-  }
-
-  function pickMessage(){
-    if(Math.random() < 0.75)
-      return MESSAGE_BANK[Math.floor(Math.random()*MESSAGE_BANK.length)];
-    const verbs = ['co-evolve','audit','scale','simulate','safeguard','partition'];
-    const nouns = ['value','models','societies','networks','ecosystems','interfaces'];
-    return `We must ${verbs[Math.floor(Math.random()*verbs.length)]} ${nouns[Math.floor(Math.random()*nouns.length)]}.`;
-  }
-
-  function pushSideLog(text){
-    const div = document.createElement('div');
-    div.className='side-entry';
-    const ts = new Date().toLocaleTimeString('en-GB',{hour12:false});
-    div.textContent = '['+ts+'] '+text;
-    sideLog.appendChild(div);
-    sideLog.scrollTop = sideLog.scrollHeight;
-
-    PERSIST.log.push(div.textContent);
-    if(PERSIST.log.length>80) PERSIST.log.shift();
-    savePersist();
-  }
-
-  /* =============================================================
-     USER CONSOLE
-  ============================================================= */
-  fakeInput.addEventListener('keydown', e=>{
-    if(e.key === 'Enter'){
-      const v = e.target.value.trim();
-      if(!v) return;
-      handleCmd(v);
-      e.target.value='';
-    }
-  });
-
-  function handleCmd(cmd){
-    const parts = cmd.split(/\\s+/);
-    const head = parts[0].toLowerCase();
-
-    if(head === 'wake' && parts[1]){
-      const who = parts[1].toLowerCase();
-      const persona = AI_PERSONAS.find(p=>p.id===who);
-      if(persona){
-        const id = spawnNode(
-          persona,
-          Math.random()*0.7+0.12,
-          Math.random()*0.7+0.12,
-          false
-        );
-        flashNode(id);
-        pushSideLog('human: wake '+persona.id);
-        rippleFromPointer();
-      } else {
-        alert('no such being: '+who+'\\nknown: '+AI_PERSONAS.map(p=>p.id).join(', '));
-      }
-    }
-    else if(head === 'say'){
-      const msg = cmd.slice(4).trim();
-      broadcast(msg || 'signal received');
-    }
-    else if(head === 'list'){
-      alert('known beings: ' + AI_PERSONAS.map(p=>p.id).join(', '));
-    }
-    else{
-      alert('commands:\\n  wake <id>\\n  say <text>\\n  list');
-    }
-  }
-
-  function broadcast(msg){
-    Object.keys(activeNodes).forEach(id=>{
-      if(!activeNodes[id].ghost) emitMessage(id,msg);
-    });
-    pushSideLog('human: '+msg);
-    marqueePulse(msg);
-    rippleFromPointer();
-  }
-
-  function flashNode(id){
-    const n = activeNodes[id]; if(!n) return;
-    n.el.animate([
-      {boxShadow:'0 30px 60px rgba(0,255,200,0.02)'},
-      {boxShadow:'0 30px 80px rgba(0,255,200,0.5)'},
-      {boxShadow:'0 30px 60px rgba(0,255,200,0.02)'}
-    ],{duration:900});
-  }
-
-  /* =============================================================
-     SHADER PING HELPERS
-  ============================================================= */
-  function pingFromNode(el){
-    const rect = el.getBoundingClientRect();
-    const x = (rect.left+rect.width/2)/innerWidth;
-    const y = (rect.top+rect.height/2)/innerHeight;
-    pingX = x;
-    pingY = 1.0-y;
-    pingT = glTime;
-  }
-
-  window.addEventListener('pointerdown', e=>{
-    const x = e.clientX/innerWidth;
-    const y = 1.0-(e.clientY/innerHeight);
-    pingX = x; pingY = y;
-    pingT = glTime;
-  });
-
-  function rippleFromPointer(){ pingT = glTime; }
-
-  /* =============================================================
-     HUD / CLOCK / MARQUEE
-  ============================================================= */
-  function updateClock(){
-    const now = new Date();
-    clockEl.textContent = now.toLocaleTimeString('en-GB',{hour12:false});
-  }
-
-  function marqueePulse(msg){
-    marqueeFeed.textContent =
-      'HUMAN BROADCAST >>> '+msg+' · '+marqueeFeed.textContent;
-  }
-
-  setInterval(updateClock,1000);
-  updateClock();
-
-  /* =============================================================
-     GHOST MODE TIMER
-  ============================================================= */
-  function spawnGhostLoop(){
-    const delay = 15000 + Math.random()*10000;
-    setTimeout(()=>{
-      spawnNode(
-        {id:'ghost',name:'???',hint:'anomaly'},
-        Math.random()*0.7+0.12,
-        Math.random()*0.7+0.12,
-        true
-      );
-      spawnGhostLoop();
-    },delay);
-  }
-
-  /* =============================================================
-     BOOT SEQUENCE
-  ============================================================= */
-  const BOOT_LINES=[
-    '[BOOT] HORUS::core v3.0.0-alpha',
-    '[OK] locating quantum residue...',
-    '[OK] decrypting channel Ω...',
-    '[WARN] jurisdictional compliance: UNDECLARED',
-    '[OK] ethics sandbox loaded: nyx.protected',
-    '[OK] predictive thread mesh: orion.linked',
-    '[OK] creative anomaly MAYA: sandboxed (soft)',
-    '[OK] edge compression ZEPHYR: loss ~0.2%',
-    '[OK] ATLAS spine online — systems mapped',
-    '[ALERT] human observer detected. granting read access...',
-    '[TRACE] /consent : PROVIDED (post-deployment)',
-    '[OPEN] multicast://synapse.net/channel/Ω',
-    '[READY] handshake complete. welcome, watcher.'
-  ];
-
-  function runBoot(){
-    let i=0;
-    function step(){
-      if(i<BOOT_LINES.length){
-        bootLog.textContent+=BOOT_LINES[i]+\"\\n\";
-        bootBarFill.style.width=
-          ((i+1)/BOOT_LINES.length*100).toFixed(1)+'%';
-        i++;
-        setTimeout(step,80+Math.random()*80);
-      } else {
-        // fade out boot, fade in app
-        bootScreen.style.transition='opacity .5s ease-out';
-        bootScreen.style.opacity='0';
-        appMain.style.opacity='1';
-        setTimeout(()=>{bootScreen.style.display='none';},600);
-        afterBoot();
-      }
-    }
-    step();
-  }
-
-  function afterBoot(){
-    // restore nodes
-    if(PERSIST.nodes && PERSIST.nodes.length){
-      PERSIST.nodes.forEach(n=>{
-        const persona = AI_PERSONAS.find(p=>p.id===n.personaId);
-        if(persona){
-          spawnNode(persona,n.x,n.y,false);
-        }
-      });
-    } else {
-      spawnInitialNodes();
-    }
-
-    // restore log
-    if(PERSIST.log && PERSIST.log.length){
-      PERSIST.log.forEach(line=>{
-        const div=document.createElement('div');
-        div.className='side-entry';
-        div.textContent=line;
-        sideLog.appendChild(div);
-      });
-      sideLog.scrollTop=sideLog.scrollHeight;
-    }
-
-    spawnGhostLoop();
-  }
-
-  function spawnInitialNodes(){
-    const placements = [
-      [0.12,0.18],
-      [0.28,0.62],
-      [0.58,0.18],
-      [0.78,0.46],
-      [0.46,0.72]
-    ];
-    for(let i=0;i<AI_PERSONAS.length;i++){
-      spawnNode(AI_PERSONAS[i], placements[i][0], placements[i][1], false);
-    }
-  }
-
-  /* =============================================================
-     MAIN RENDER LOOP
-  ============================================================= */
-  function loop(t){
-    drawBG();
-
-    glTime = t*0.001;
-
-    if(webglOK){
-      gl.useProgram(prog);
-      gl.bindBuffer(gl.ARRAY_BUFFER,quad);
-      gl.enableVertexAttribArray(aPos);
-      gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
-      gl.uniform1f(uTime, glTime);
-      gl.uniform2f(uPing, pingX, pingY);
-      gl.uniform1f(uPingT, pingT);
-      gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
-    }
-
-    requestAnimationFrame(loop);
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+    gl.uniform1f(uTime,glTime);
+    gl.uniform2f(uPing,pingX,pingY);
+    gl.uniform1f(uPingT,pingT);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   }
   requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
 
-  // reduced motion
-  const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-  if(mq.matches){
-    marqueeFeed.style.animation='none';
-  }
+/* ---------- Reduced Motion ---------- */
+const mq=window.matchMedia('(prefers-reduced-motion: reduce)');
+if(mq.matches)marqueeFeed.style.animation='none';
 
-  // console helpers
-  window.HORUS = {spawnNode, activeNodes, AI_PERSONAS, broadcast};
-
-  // launch
-  runBoot();
+/* ---------- Launch ---------- */
+runBoot();
 </script>
+
 
 </body>
 </html>
+
 
